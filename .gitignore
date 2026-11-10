@@ -1,0 +1,12 @@
+# Python virtual environment (recreate with: python -m venv .venv && .venv/bin/pip install pandas numpy matplotlib jupyter)
+.venv/
+
+# Python cache files (regenerated automatically)
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Built submission archive (rebuild from strategy/ + writeup.md)
+submission.zip
