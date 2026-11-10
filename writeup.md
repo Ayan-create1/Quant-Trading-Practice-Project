@@ -5,75 +5,107 @@
 
 ## Summary
 
-A long-only, risk-controlled strategy for Assets A–F. Each asset is held only
-while its price trend is positive. The size of each holding depends on how calm
-the asset has been, and money that isn't invested stays in cash. The goal is a steady
-Sharpe ratio and small drawdowns rather than maximum return.
+A long-only, risk-controlled strategy for Assets A–F. It holds each asset only
+while that asset's price trend is positive, sizes holdings so calmer assets get
+more money, and keeps everything else in cash. The aim is a steady Sharpe ratio
+and small drawdowns rather than maximum return.
 
 | | Max drawdown | Sharpe | Return |
 |---|---|---|---|
-| Development, 2017-11 to 2021-12 | **−12.1%** (baseline −36.5%) | **1.37** (baseline 1.17) | 19.6% a year (baseline 31.9%) |
-| Holdout, 2022-01 to 2023-10 | **−17.4%** (baselines about −30.5%) | −0.23 (baselines −0.02 to 0.09) | −6.2% total (baselines −3.3% to −7.9%) |
+| Development, 2017-11 to 2021-12 | **−12.1%** (inverse-vol baseline −36.5%) | **1.37** (baseline 1.17) | 19.6% a year (baseline 31.9%) |
+| Holdout, 2022-01 to 2023-10 | **−17.4%** (baselines −30.4% to −30.8%) | −0.23 (baselines −0.02 to 0.09) | −6.2% total (baselines −3.3% to −8.2%) |
 
-The baseline is an inverse-volatility portfolio of all six assets. The
-drawdown protection held up out of sample. Return and Sharpe did not (see
-[Results](#results)).
+The drawdown protection held up out of sample. Return and Sharpe did not.
 
 ---
 
-## The strategy
+## 1. Trading hypothesis
 
-Every morning, for each asset A–F, using closing prices up to the previous day only:
+**Hypothesis:** an asset whose price has been rising over the past few months
+tends to keep rising for a while, and one that has been falling tends to keep
+falling. Holding assets only while they trend up, and stepping into cash while
+they trend down, should avoid much of the damage in sustained sell-offs while
+keeping most of the gains in up-trends.
 
-| Step | Rule |
+**Why it might work:** trends persist because investors react to news gradually
+and because selling tends to feed on itself during declines. The main benefit we
+expected, and found, is **loss avoidance**: the strategy's value comes from
+being in cash during long falls, not from picking winners.
+
+## 2. Assets and behaviours targeted
+
+- **Assets:** all six, A–F, traded independently. Asset_G is excluded (always
+  weight 0) because it duplicates Asset_B.
+- **Behaviour targeted:** sustained multi-month trends, and especially sustained
+  declines. For example, in 2022 Assets C and D each fell about 65%, and the strategy
+  held only 1% and 4% of them on average.
+- **Not targeted:** short-term moves. The signals are deliberately slow, so the
+  strategy doesn't react to day-to-day noise.
+
+## 3. How signals are generated
+
+Every morning, for each asset, using closing prices **up to the previous day only**:
+
+| Signal | Rule |
 |---|---|
-| Trend signal | 1 if the latest close is above its 50-day average, else 0 |
-| Momentum signal | the average of three 0/1 signals: is the return over the past 63, 126 and 252 trading days positive? |
-| Signal strength | (trend + momentum) ÷ 2, a number between 0 and 1 |
-| Base weight | inverse volatility: 1 ÷ standard deviation of the last 60 daily returns, scaled so the six add up to 1 |
-| **Target weight** | **base weight × signal strength**. The remainder is held in cash. |
+| Trend | 1 if the latest close is above its 50-day average, else 0 |
+| Momentum | the average of three 0/1 signals: is the return over the past 63, 126 and 252 trading days positive? |
+| **Signal strength** | **(trend + momentum) ÷ 2**, from 0 (fully out) to 1 (fully in), in steps of ⅙ |
 
-- Long only. Total weight is never above 100%. Asset_G is always 0, because it duplicates Asset_B.
-- Trades happen at the next day's open. Costs are 5 bp per unit traded, charged only on the change in each position.
-- Holding-period limit: by default, a position held 21 trading days is closed for
-  one day, then may be reopened. This is configurable (see [Holding-rule setting](#holding-rule-setting)).
+Combining four signals means the strategy steps in and out of an asset gradually
+rather than all at once. Using three momentum lookbacks means no single, possibly
+lucky, setting drives the result.
 
-**Why it should work:** assets that have been rising over several months tend to
-keep doing so for a while. More importantly, a sustained fall turns the signals
-off, and the strategy moves to cash before most of the damage is done.
-Blending one trend signal with momentum over three different lookbacks means no
-single, possibly lucky, setting drives the result. Inverse-volatility sizing
-stops the jumpiest assets from dominating risk.
+## 4. Allocation sizing and risk management
 
----
-
-## Research process
-
-- **Development data:** 2016-10-28 to 2021-12-31, used for all design decisions.
-- **Holdout:** 2022-01-03 to 2023-10-06. Run **once**, after the strategy was frozen.
-- **Look-ahead checks:** every strategy was re-run with later data deleted and with
-  future prices deliberately altered. Earlier decisions never changed.
-- **Steps:**
-  1. Baselines: equal weight and inverse volatility, daily and monthly.
-  2. A trend filter and a momentum signal, plus their combinations (AND, OR, AVERAGE).
-  3. A robustness grid: moving average 30–200 days × momentum 63–252 days.
-     Single-lookback momentum turned out to depend heavily on the 126-day setting
-     (Sharpe 1.60 at 126 days, but 1.07–1.26 at the neighbouring settings).
-  4. A final choice between "Single" (126-day momentum) and "Multi" (63/126/252),
-     using a decision rule written down *before* running. The rule compared the two
-     at 9 nearby settings. Multi won: its Sharpe stayed between 1.22 and 1.49
-     across all 9 settings, against 1.15–1.66 for Single.
-  5. Volatility targeting at 10%, 15% and 20%: tested and **rejected**. Every
-     version lowered the Sharpe. The signals already move money to cash in
-     sell-offs, and vol targeting then kept exposure low during rebounds.
-  6. Holdout: run once, and nothing was changed afterwards. A 25% equal-weight /
-     75% Multi blend was looked at later, as a reporting check only (it is no
-     longer an unbiased test). It was **not adopted**, because it traded lower
-     Sharpe and deeper drawdowns for more return.
+- **Base weight:** inverse volatility, meaning 1 ÷ the standard deviation of the
+  last 60 daily returns, scaled so the six weights add up to 1. A jumpier asset
+  gets less money, so each asset contributes more evenly to risk.
+- **Target weight = base weight × signal strength.** The unused part of the account is held in cash.
+- **Limits:** long only. Total weight is never above 100% (checked in code and in tests).
+- **Execution and costs:** trades happen at the next day's open. Costs are 5 bp per
+  unit traded, charged only on the change in each position.
+- **Holding period:** by default, a position held 21 trading days is closed for one
+  day, then may be reopened. This is configurable (see [Holding-rule setting](#holding-rule-setting)).
+- **The main risk control is the signal itself:** in falling markets the strategy
+  moves to cash. On average it was 63% invested in the development period and 46% in the holdout.
 
 ---
 
-## Results
+## 5. How it was backtested and validated
+
+- **Data split:** development data from 2016-10-28 to 2021-12-31 was used for every
+  design decision. The 2022-01-03 to 2023-10-06 holdout was run **once**, after the
+  strategy was frozen. Nothing was changed because of the holdout result.
+- **Backtester:** trades at the next day's open, 5 bp costs on turnover, positions
+  carried overnight, strict 21-day holding limit, total weight capped at 100%.
+  All strategies in a comparison start on the same day.
+- **Look-ahead tests:** these were run for every strategy.
+  - Truncation: re-running with all data after a cut-off date deleted left every earlier day's weights unchanged.
+  - Tamper: tripling all prices from the decision day onward didn't change that day's weights.
+  - By hand: signals were checked against hand calculations.
+- **Robustness grids (development data only):**
+  - Moving average 30/50/100/200 days × momentum lookback 63/126/252 days, plus a finer lookback sweep from 42 to 252 days in steps of 21.
+  - This showed that single-lookback momentum depended heavily on the 126-day setting: Sharpe 1.60 at 126 days, but only 1.07–1.26 at 63, 189 and 252 days.
+  - All 20 grid cells cut drawdown sharply (−10% to −22% vs −48% for the baseline over that period).
+- **Decision rule fixed in advance:** before running the final comparison between
+  "Single" (126-day momentum) and "Multi" (63/126/252), I wrote down how the winner would be chosen.
+  - Compare both at 9 nearby settings, and prefer the one that is better on median Sharpe *and* on worst drawdown.
+  - If those two disagree, the one whose Sharpe varies less wins.
+  - Multi won on that tie-break. Its Sharpe stayed between 1.22 and 1.49 across the 9 settings, against 1.15–1.66 for Single.
+- **Other checks:**
+  - Year-by-year results.
+  - Results with the COVID crash removed.
+  - Each asset traded on its own.
+  - Costs doubled to 10 bp: for the earlier 126-day momentum version, Sharpe went from 1.63 to 1.55.
+- **Packaging check:** the delivered code reproduces the research backtest
+  **exactly**, with identical weights on all 1,472 trading days (23 automated tests).
+  A script written only from the README also reproduced the results in a clean
+  folder containing just `strategy/`.
+
+---
+
+## 6. Results vs baselines
 
 All results use the strict 21-day holding limit and 5 bp costs.
 
@@ -82,40 +114,64 @@ All results use the strict 21-day holding limit and 5 bp costs.
 | | **Multi** | Inverse vol | Equal weight |
 |---|---|---|---|
 | Annualized return | 19.6% | 31.9% | 33.6% |
-| Annualized volatility | **13.8%** | 26.7% | 28.8% |
 | Sharpe ratio | **1.37** | 1.17 | 1.15 |
 | Max drawdown | **−12.1%** | −36.5% | −38.6% |
-| Average % invested | 63% | 96% | 96% |
 
 ### Holdout (2022-01-03 to 2023-10-06)
 
-| | **Multi** | Inverse vol | Equal weight |
-|---|---|---|---|
-| Total return | −6.2% | −7.9% | **−3.3%** |
-| Sharpe ratio | −0.23 | −0.02 | **0.09** |
-| Max drawdown | **−17.4%** | −30.4% | −30.7% |
-| 2022 return | **−15.7%** | −23.9% | −25.3% |
-| 2023 return (to Oct 6) | +11.3% | +21.1% | **+29.5%** |
+| | **Multi** | Inverse vol (daily) | Inverse vol (monthly) | Equal weight |
+|---|---|---|---|---|
+| Total return | −6.2% | −7.9% | −8.2% | **−3.3%** |
+| Annualized return | −3.6% | −4.6% | −4.7% | **−1.9%** |
+| Sharpe ratio | −0.23 | −0.02 | −0.02 | **0.09** |
+| Max drawdown | **−17.4%** | −30.4% | −30.8% | −30.7% |
+| 2022 return | **−15.7%** | −23.9% | −23.5% | −25.3% |
+| 2023 return (to Oct 6) | +11.3% | +21.1% | +20.0% | **+29.5%** |
 
-**Honest reading:** the strategy did what it is designed to do in the 2022 bear
-market. It lost about a third less than the baselines, and its worst drawdown was
-roughly half theirs. But it re-entered too slowly in the sharp 2023 rebound,
-because the 252-day momentum stayed negative for months. Over the full holdout
-it finished behind equal weight.
-
-The development-period Sharpe was also helped a lot by one fast crash (COVID,
-March 2020), which is the easiest case for this kind of strategy. On new data, a
-realistic expectation is a Sharpe of about 1.0–1.4 and a max drawdown of −12% to −20%,
-with the strategy trailing buy-and-hold during strong rallies.
-
-**Risks:**
-- Choppy markets with repeated false rallies, where signals switch on just before another drop.
-- Sharp V-shaped rebounds, which it is slow to rejoin.
-- Overnight gaps, because signals react only to the previous close.
+**Honest reading:**
+- In the 2022 bear market, the strategy did what it is designed to do. It lost
+  about a third less than the baselines, and its worst drawdown was roughly half theirs.
+- It then re-entered too slowly in the sharp 2023 rebound, and over the full
+  holdout it finished behind equal weight.
+- Before the holdout, the expectation was a Sharpe of about 1.2–1.4 and a max
+  drawdown of about −12% to −18%. The drawdown landed inside that range; the Sharpe came in well below it.
 
 ---
 
-## How to run
+## 7. Ideas tested and rejected
+
+| Idea | Result | Why rejected |
+|---|---|---|
+| **Single-lookback signals** (trend only, momentum only, AND, OR, Single AVERAGE) | Momentum only looked best at 126 days (Sharpe 1.63), but fell to about baseline level at nearby settings | Too dependent on one possibly lucky setting; Multi was more stable |
+| **Volatility targeting** (10%, 15%, 20%; "cut only" and "up & down") | Every version lowered the Sharpe, from 1.37 to between 1.18 and 1.32. The best drawdown, −10.7% (cut only, 10%), cost 7% a year in return (19.6% to 12.5%) | The signals already de-risk in sell-offs. Vol targeting then kept exposure low during rebounds, and the "up & down" version concentrated risk |
+| **25% equal weight + 75% Multi** | Development: Sharpe 1.32, max drawdown −17.8%, 23.4% a year. 2022–23: −7.0%, max drawdown −21.4% | Traded lower Sharpe and deeper drawdowns for more return. **Note: this was tested *after* seeing the holdout, so its 2022–23 numbers are not an unbiased test** |
+| **Short-term reversal** | **Not tested** in this project | — |
+
+---
+
+## 8. Limitations and failure conditions
+
+- **Slow re-entry after crashes.** After a deep fall, the 252-day momentum can stay
+  negative for months even while prices recover. This happened in 2019 and 2021 in
+  the development period, and badly in 2023.
+- **Lags strong rebounds.** It trails buy-and-hold in strong rallies. In 2023 it made
+  +11.3% against equal weight's +29.5%.
+- **Its value depends on sell-offs happening.** If Feb–Apr 2020 (COVID) is removed
+  from the development period, the final Multi strategy's Sharpe falls *below* the
+  baseline's: 1.46 vs 1.58. Its drawdown is still much smaller (−12.1% vs −20.2%).
+  The earlier 126-day momentum version showed the same pattern (1.74 vs 1.66; −10.3% vs −20.0%).
+  In a calm, steadily rising market it will likely underperform.
+- **Choppy markets and false rallies.** Signals can switch back on just before
+  another drop, as in mid to late 2022. They also react only to the previous close,
+  so fast single-day drops get through.
+- **The 21-day rule interpretation matters.** All results assume a full exit after
+  21 days with one day out. A different reading changes turnover and costs (see the setting below).
+- **Short history.** Development results cover about four years and contain one fast
+  crash, so the estimates are noisy.
+
+---
+
+## 9. How to run
 
 **Requirements:** Python 3.10+, `numpy`, `pandas`. Nothing else.
 
@@ -174,15 +230,3 @@ COOLDOWN_DAYS = 1
 | A position held 21 days must be closed before reopening | `"exit_and_wait"` (default; all results above use this) |
 | …and must stay closed longer | `"exit_and_wait"` with a larger `COOLDOWN_DAYS` |
 | Rebalancing counts as a new position, or sell-and-rebuy at the same open is allowed | `"off"` |
-
-### Verification
-
-A test suite in my project repository (`tests/test_strategy.py`, 23 tests; not part of this submission, available on request) confirms that the packaged strategy
-reproduces the research backtest **exactly**: identical weights on every one of
-1,472 trading days. It also tests the one-day-at-a-time feeding, the fallback,
-the holding limit, and that total weight never exceeds 100%.
-
-Separately, a script written only from the README was run in a fresh folder
-containing just `strategy/`. It fed the strategy one day at a time, using its own
-simple accounting, and reproduced the numbers above. That included the holdout
-run where it was given just one day of history and the fallback filled in the rest.
